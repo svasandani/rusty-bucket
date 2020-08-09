@@ -9,3 +9,6 @@ edition = "2018"
 [dependencies]
 rust-s3 = "0.22.12"
 aws-creds = "0.23.1"
+warp = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "0.2", features = ["macros"] }
