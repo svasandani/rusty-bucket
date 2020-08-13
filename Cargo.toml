@@ -9,6 +9,13 @@ edition = "2018"
 [dependencies]
 rust-s3 = "0.22.12"
 aws-creds = "0.23.1"
-warp = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "0.2", features = ["macros"] }
+rocket = "0.4"
+rocket_codegen = "0.4"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+
+[dependencies.rocket_contrib]
+version = "*"
+default-features = false
+features = ["json"]

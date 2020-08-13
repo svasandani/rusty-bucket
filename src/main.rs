@@ -1,16 +1,18 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
+#[macro_use] extern crate rocket;
+
 use s3::bucket::Bucket;
 use s3::region::Region;
 use s3::S3Error;
 use s3::creds::Credentials;
 use std::str;
 
-use warp::Filter;
-
 const MESSAGE: &str = "I want to go to S3";
 
 use std::env;
 
-struct Storage {
+struct Information {
     name: String,
     region: Region,
     credentials: Credentials,
@@ -18,21 +20,47 @@ struct Storage {
     location_supported: bool,
 }
 
-#[tokio::main]
-async fn main() {
-    // GET /hello/warp => 200 OK with body "Hello, warp!"
-    let hello = warp::path!("hello" / String)
-        .map(|name| format!("Hello, {}!", name));
+fn main() {
+    let aws = Information {
+        name: "aws".into(),
+        region: "us-east-2".parse().unwrap(),
+        credentials: Credentials::from_env_specific(Some("AWS_ACCESS_KEY_ID"), Some("AWS_SECRET_ACCESS_KEY"), None, None,).unwrap(),
+        bucket: "rusty-kebab-bucket".to_string(),
+        location_supported: true,
+    };
 
-    warp::serve(hello)
-        .run(([127, 0, 0, 1], 3030))
-        .await;
+    // Create Bucket in REGION for BUCKET
+    let bucket = Bucket::new(&aws.bucket, aws.region, aws.credentials).unwrap();
+
+    rocket::ignite()
+        .mount("/hello", routes![hello])
+        .launch();
+}
+
+// async fn list_files(bucket: Bucket) -> Result<impl warp::Reply, warp::Rejection> {
+//     let mut result = Vec::new();
+
+//     // List out contents of directory
+//     let results = bucket.list_blocking("".to_string(), None)?;
+
+//     for (list, code) in results {
+//         if (code == 200) {
+//             result.push(list.name);
+//         }
+//     }
+
+//     Ok(warp::reply::json(
+//         &result
+//     ))
+// }
+
+#[get("/<name>/<age>")]
+fn hello(name: String, age: u8) -> String {
+    format!("Hello, {} year old named {}!", age, name)
 }
 
 fn test() -> Result<(), S3Error> {
-    // let bucket_name = &env::var("S3_BUCKET_NAME").unwrap();
-    // let region = &env::var("AWS_REGION").unwrap();
-    let aws = Storage {
+    let aws = Information {
         name: "aws".into(),
         region: "us-east-2".parse()?,
         credentials: Credentials::from_env_specific(Some("AWS_ACCESS_KEY_ID"), Some("AWS_SECRET_ACCESS_KEY"), None, None,)?,
@@ -40,9 +68,6 @@ fn test() -> Result<(), S3Error> {
         location_supported: true,
     };
 
-    // let bucket = Bucket::new(bucket_name, region, credentials);
-
-    println!("Running {}", aws.name);
     // Create Bucket in REGION for BUCKET
     let bucket = Bucket::new(&aws.bucket, aws.region, aws.credentials)?;
 
@@ -50,7 +75,7 @@ fn test() -> Result<(), S3Error> {
     let results = bucket.list_blocking("".to_string(), None)?;
     for (list, code) in results {
         assert_eq!(200, code);
-        println!("{:?}", list.contents);
+        println!("{:?}", list.name);
     }
 
     let (_, code) =
