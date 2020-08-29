@@ -1,6 +1,10 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
 #[macro_use] extern crate rocket;
+#[macro_use] extern crate rocket_contrib;
+#[macro_use] extern crate serde_derive;
+
+use rocket::State;
 
 use s3::bucket::Bucket;
 use s3::region::Region;
@@ -33,7 +37,8 @@ fn main() {
     let bucket = Bucket::new(&aws.bucket, aws.region, aws.credentials).unwrap();
 
     rocket::ignite()
-        .mount("/hello", routes![hello])
+        .manage(bucket)
+        .mount("/", routes![list_files, get_file])
         .launch();
 }
 
@@ -59,44 +64,75 @@ fn hello(name: String, age: u8) -> String {
     format!("Hello, {} year old named {}!", age, name)
 }
 
-fn test() -> Result<(), S3Error> {
-    let aws = Information {
-        name: "aws".into(),
-        region: "us-east-2".parse()?,
-        credentials: Credentials::from_env_specific(Some("AWS_ACCESS_KEY_ID"), Some("AWS_SECRET_ACCESS_KEY"), None, None,)?,
-        bucket: "rusty-kebab-bucket".to_string(),
-        location_supported: true,
-    };
-
-    // Create Bucket in REGION for BUCKET
-    let bucket = Bucket::new(&aws.bucket, aws.region, aws.credentials)?;
+#[get("/list")]
+fn list_files(bucket: State<Bucket>) -> String {
+    let mut result = Vec::new();
 
     // List out contents of directory
-    let results = bucket.list_blocking("".to_string(), None)?;
+    let results = bucket.list_blocking("".to_string(), None).unwrap();
+
     for (list, code) in results {
-        assert_eq!(200, code);
-        println!("{:?}", list.name);
+        if (code == 200) {
+            result.push(format!("{:?}", list));
+        }
     }
 
-    let (_, code) =
-        bucket.put_object_blocking("test_file", MESSAGE.as_bytes(), "text/plain")?;
-    // println!("{}", bucket.presign_get("test_file", 604801)?);
-    assert_eq!(200, code);
-
-    // Get the "test_file" contents and make sure that the returned message
-    // matches what we sent.
-    let (data, code) = bucket.get_object_blocking("test_file")?;
-    let string = str::from_utf8(&data)?;
-    println!("{}", string);
-    assert_eq!(200, code);
-    assert_eq!(MESSAGE, string);
-
-    if aws.location_supported {
-        // Get bucket location
-        println!("{:?}", bucket.location_blocking()?);
-    }
-
-    let (_, code) = bucket.delete_object_blocking("test_file")?;
-
-    Ok(())
+    format!("{:?}", result)
 }
+
+#[get("/file/<file>")]
+fn get_file(file: String, bucket: State<Bucket>) -> String {
+    let filename = format!("/{}", file);
+
+    let (data, code) = bucket.get_object_blocking(filename).unwrap();
+
+    if (code == 200) {
+        return format!("{:?}", data);
+    }
+
+    let err = "Something went wrong.";
+
+    err.to_string()
+}
+
+// fn test() -> Result<(), S3Error> {
+//     let aws = Information {
+//         name: "aws".into(),
+//         region: "us-east-2".parse()?,
+//         credentials: Credentials::from_env_specific(Some("AWS_ACCESS_KEY_ID"), Some("AWS_SECRET_ACCESS_KEY"), None, None,)?,
+//         bucket: "rusty-kebab-bucket".to_string(),
+//         location_supported: true,
+//     };
+
+//     // Create Bucket in REGION for BUCKET
+//     let bucket = Bucket::new(&aws.bucket, aws.region, aws.credentials)?;
+
+//     // List out contents of directory
+//     let results = bucket.list_blocking("".to_string(), None)?;
+//     for (list, code) in results {
+//         assert_eq!(200, code);
+//         println!("{:?}", list.name);
+//     }
+
+//     let (_, code) =
+//         bucket.put_object_blocking("test_file", MESSAGE.as_bytes(), "text/plain")?;
+//     // println!("{}", bucket.presign_get("test_file", 604801)?);
+//     assert_eq!(200, code);
+
+//     // Get the "test_file" contents and make sure that the returned message
+//     // matches what we sent.
+//     let (data, code) = bucket.get_object_blocking("test_file")?;
+//     let string = str::from_utf8(&data)?;
+//     println!("{}", string);
+//     assert_eq!(200, code);
+//     assert_eq!(MESSAGE, string);
+
+//     if aws.location_supported {
+//         // Get bucket location
+//         println!("{:?}", bucket.location_blocking()?);
+//     }
+
+//     let (_, code) = bucket.delete_object_blocking("test_file")?;
+
+//     Ok(())
+// }
