@@ -5,15 +5,18 @@
 #[macro_use] extern crate serde_derive;
 
 use rocket::State;
+use rocket::Data;
+use rocket::data::DataStream;
+use rocket::http::Status;
 
 use s3::bucket::Bucket;
 use s3::region::Region;
 use s3::S3Error;
 use s3::creds::Credentials;
+
 use std::str;
-
-const MESSAGE: &str = "I want to go to S3";
-
+use chrono::{DateTime, Utc};
+use std::io::Read;
 use std::env;
 
 struct Information {
@@ -38,7 +41,7 @@ fn main() {
 
     rocket::ignite()
         .manage(bucket)
-        .mount("/", routes![list_files, get_file])
+        .mount("/", routes![list_files, get_file, get_tagged_file, put_file])
         .launch();
 }
 
@@ -81,18 +84,51 @@ fn list_files(bucket: State<Bucket>) -> String {
 }
 
 #[get("/file/<file>")]
-fn get_file(file: String, bucket: State<Bucket>) -> String {
+fn get_file(file: String, bucket: State<Bucket>) -> Result<Vec<u8>, Status> {
     let filename = format!("/{}", file);
 
     let (data, code) = bucket.get_object_blocking(filename).unwrap();
 
     if (code == 200) {
-        return format!("{:?}", data);
-    }
+        Ok(data)
+    } else {
+        Err(Status::NotFound)
+    }  
+}
 
-    let err = "Something went wrong.";
+#[get("/file/<tag>/<timestamp>")]
+fn get_tagged_file(tag: String, timestamp: String, bucket: State<Bucket>) -> Result<Vec<u8>, Status> {
+    let filename = format!("/{}/{}", tag, timestamp);
 
-    err.to_string()
+    let (data, code) = bucket.get_object_blocking(filename).unwrap();
+
+    if (code == 200) {
+        Ok(data)
+    } else {
+        Err(Status::NotFound)
+    }  
+}
+
+#[post("/file/<tag>/<ext>", data = "<data>")]
+fn put_file(tag: String, ext: String, data: Data, bucket: State<Bucket>) -> Result<String, Status> {
+    let now: DateTime<Utc> = Utc::now();
+
+    let mut datavec = Vec::new();
+
+    let mut stream = data.open();
+
+    stream.read_to_end(&mut datavec);
+
+    let filename = format!("/{}/{}.{}", tag, now.timestamp(), ext);
+    let ret = filename.clone();
+
+    let (_, code) = bucket.put_object_blocking(filename, &datavec, "application/octet-stream").unwrap();
+
+    if (code == 200) {
+        Ok(ret)
+    } else {
+        Err(Status::Unauthorized)
+    }  
 }
 
 // fn test() -> Result<(), S3Error> {
